@@ -1,7 +1,17 @@
 # nf-mod-interop
 
+Nextflow module for Illumina run-level QC metrics read from the binary InterOp
+files. Used as a git submodule by pipelines (first: nf-seQC).
 
-Nextflow module for interop. Used as a git submodule by pipelines.
+`INTEROP_RUN_METRICS` mirrors
+[Automate-Seq-Run-Metrics-Collection](https://github.com/EIT-GBI/Automate-Seq-Run-Metrics-Collection),
+the cron-based collector for the NextSeq 2000: same metric set, same column
+names (`LOG_COLUMNS`) and same %Occupied vs %PF plot, so rows from both tools
+concatenate into one log. **Keep `LOG_COLUMNS` in
+`run_metrics/resources/usr/bin/collect_illumina_metrics.py` in sync with that
+repo's `utils.py`**, and keep the InterOp, numpy and matplotlib pins in the
+Dockerfile in step with its `uv.lock`. The script's docstring lists where it
+deliberately differs.
 
 Image: `ghcr.io/eit-gbi/nf-mod-interop:v0.0.0`
 
@@ -12,7 +22,7 @@ nf-test case under `tests/`.
 
 | Process | Path | Inputs | Emits |
 | --- | --- | --- | --- |
-| `INTEROP_RUN_METRICS` | `run_metrics/main.nf` | `tuple val(meta), path(input)` | `result`, `versions_interop` |
+| `INTEROP_RUN_METRICS` | `run_metrics/main.nf` | `tuple val(meta), path(run_dir)` | `metrics`, `mqc_table`, `plot` (optional), `versions_interop` |
 
 Every process publishes its tool version on the `versions` topic as
 `[process, tool, version]`.
@@ -65,6 +75,20 @@ processes have no image:
 includeConfig 'modules/interop/conf/module.config'
 ```
 
+`INTEROP_RUN_METRICS` runs a Python script shipped in
+`run_metrics/resources/usr/bin/`. Nextflow stages that folder into the task and
+puts it on `PATH` only when module binaries are enabled, so the pipeline's
+`nextflow.config` also needs:
+
+```groovy
+nextflow.enable.moduleBinaries = true
+```
+
+Without it the task fails with `collect_illumina_metrics.py: command not
+found`. The script deliberately lives in the repo rather than in the image:
+releases rebuild the image only when the Dockerfile changes, so a script fix
+baked into the image would ship in a stale one.
+
 `conf/module.config` pins the image to the version built from this same commit,
 and carries no `manifest {}` block, so it will not overwrite your pipeline's own
 manifest. Override it in your pipeline with a `withName` selector if you need to.
@@ -86,7 +110,9 @@ is linted with `nextflow lint` in CI.
 nf-test test
 ```
 
-The stub test checks wiring and output names, and needs no container. Tests
+The stub test checks wiring and output names, and needs no container. The
+other tests unpack two real run folders from nf-core/test-datasets (a NovaSeq
+patterned flowcell and a MiSeq) and snapshot the metric rows. Tests
 that run the tool for real use `tests.config`, which resolves the image through
 `conf/module.config` and needs Docker. In CI, the image is built from this
 commit's Dockerfile under that exact tag first, so the tests run against the

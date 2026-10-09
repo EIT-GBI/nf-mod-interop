@@ -1,0 +1,66 @@
+{
+    "INTEROP_RUN_METRICS - non-patterned flowcell - no plot, n/a occupancy": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "miseq"
+                    },
+                    "miseq.run_metrics.csv:md5,f87733b841f40b3cbe5b42937a4e1956"
+                ]
+            ],
+            [
+                [
+                    {
+                        "id": "miseq"
+                    },
+                    "miseq_run_metrics_mqc.tsv:md5,5fe05cea061efb7bb89a4d1fb27be642"
+                ]
+            ],
+            [
+                [
+                    "INTEROP_RUN_METRICS",
+                    "interop",
+                    "1.9.0"
+                ]
+            ]
+        ],
+        "meta": {
+            "nf-test": "0.9.3",
+            "nextflow": "26.04.6"
+        },
+        "timestamp": "2026-10-09T11:59:36.806614"
+    },
+    "INTEROP_RUN_METRICS - patterned flowcell - metrics and tile plot": {
+        "content": [
+            [
+                [
+                    {
+                        "id": "novaseq"
+                    },
+                    "novaseq.run_metrics.csv:md5,5a9993e914f9e9adb1486f5374df131d"
+                ]
+            ],
+            [
+                [
+                    {
+                        "id": "novaseq"
+                    },
+                    "novaseq_run_metrics_mqc.tsv:md5,2d9f61a574a839bf11945c21a85364ef"
+                ]
+            ],
+            [
+                [
+                    "INTEROP_RUN_METRICS",
+                    "interop",
+                    "1.9.0"
+                ]
+            ]
+        ],
+        "meta": {
+            "nf-test": "0.9.3",
+            "nextflow": "26.04.6"
+        },
+        "timestamp": "2026-10-09T11:59:33.299098"
+    }
+}
