@@ -18,7 +18,7 @@ Python 3.13 (the collector runs 3.14; the package versions are the same). Every
 package, transitive dependencies included, is pinned with its wheel hashes
 inside the Dockerfile and installed with `pip --require-hashes`.
 
-Image: `ghcr.io/eit-gbi/nf-mod-interop:v1.1.0`
+Image: `ghcr.io/eit-gbi/nf-mod-interop:v1.2.0`
 
 ## Processes
 
@@ -65,7 +65,7 @@ Pin to a release tag rather than a branch, so pipeline runs stay reproducible:
 
 ```bash
 git submodule add https://github.com/EIT-GBI/nf-mod-interop.git modules/interop
-git -C modules/interop checkout v1.1.0
+git -C modules/interop checkout v1.2.0
 ```
 
 Record the same version in the pipeline's `modules.versions`
