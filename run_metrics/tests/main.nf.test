@@ -1,14 +1,14 @@
 nextflow_process {
 
-    name "Test __PROCESS__"
+    name "Test INTEROP_RUN_METRICS"
     script "../main.nf"
-    process "__PROCESS__"
+    process "INTEROP_RUN_METRICS"
 
     // TODO: pick a small public input that suits the tool. nf-core/test-datasets
     // has reads, BAMs and references for most tools.
     def TEST_INPUT = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/sarscov2/illumina/fastq/test_1.fastq.gz", checkIfExists: true)'
 
-    test("__PROCESS__ - stub - wiring and output names") {
+    test("INTEROP_RUN_METRICS - stub - wiring and output names") {
 
         options "-stub-run"
 

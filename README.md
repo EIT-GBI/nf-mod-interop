@@ -1,24 +1,9 @@
-# nf-mod-__NAME__
+# nf-mod-interop
 
-<!-- TEMPLATE:START -->
-> **Template repo.** Create a new module via GitHub's "Use this template", naming it `nf-mod-<tool>`. The `init-from-template` workflow auto-runs on the first push: it derives `<tool>` from the repo name, replaces the `__NAME__`-style tokens, renames `__SUB__/` to `<tool>/`, strips this block, and removes itself.
->
-> Manual fallback (e.g. running locally before pushing, or if the repo name doesn't start with `nf-mod-`): `./scripts/init.sh <tool> [subcommand]`.
->
-> Afterwards:
->
-> 1. Pin the tool in `Dockerfile` and delete the `# TODO: pin the version` line. Builds and releases are gated on it being gone.
-> 2. Fill in the `TODO`s in `<tool>/main.nf` and `<tool>/meta.yml` for the real inputs, command and outputs.
-> 3. For another subcommand, copy `<tool>/` to `<subcommand>/` and rename the process to `<TOOL>_<SUBCOMMAND>`.
-> 4. Add a test that runs the tool for real next to the stub test. `nf-mod-fastqc` is the worked example.
-> 5. Put the tool name and a description in the paragraph below.
->
-> Before writing a new module, check the org for an existing `nf-mod-*` repo.
-<!-- TEMPLATE:END -->
 
-Nextflow module for __NAME__. Used as a git submodule by pipelines.
+Nextflow module for interop. Used as a git submodule by pipelines.
 
-Image: `ghcr.io/eit-gbi/nf-mod-__NAME__:v0.0.0`
+Image: `ghcr.io/eit-gbi/nf-mod-interop:v0.0.0`
 
 ## Processes
 
@@ -27,7 +12,7 @@ nf-test case under `tests/`.
 
 | Process | Path | Inputs | Emits |
 | --- | --- | --- | --- |
-| `__PROCESS__` | `__SUB__/main.nf` | `tuple val(meta), path(input)` | `result`, `versions___NAME_ID__` |
+| `INTEROP_RUN_METRICS` | `run_metrics/main.nf` | `tuple val(meta), path(input)` | `result`, `versions_interop` |
 
 Every process publishes its tool version on the `versions` topic as
 `[process, tool, version]`.
@@ -53,7 +38,7 @@ module never depends on a particular pipeline's parameter names:
 
 ```groovy
 process {
-    withName: __PROCESS__ {
+    withName: INTEROP_RUN_METRICS {
         ext.args = '--some-flag'
     }
 }
@@ -64,12 +49,12 @@ process {
 Pin to a release tag rather than a branch, so pipeline runs stay reproducible:
 
 ```bash
-git submodule add https://github.com/EIT-GBI/nf-mod-__NAME__.git modules/__NAME__
-git -C modules/__NAME__ checkout v0.0.0
+git submodule add https://github.com/EIT-GBI/nf-mod-interop.git modules/interop
+git -C modules/interop checkout v0.0.0
 ```
 
 Record the same version in the pipeline's `modules.versions`
-(`nf-mod-__NAME__=<version>`). That file is the source of truth, and the pipeline's
+(`nf-mod-interop=<version>`). That file is the source of truth, and the pipeline's
 sync workflow moves the submodule to match it.
 
 Include the module's container config from your `nextflow.config`. Nextflow
@@ -77,7 +62,7 @@ does not read a submodule's config on its own, so without this line the
 processes have no image:
 
 ```groovy
-includeConfig 'modules/__NAME__/conf/module.config'
+includeConfig 'modules/interop/conf/module.config'
 ```
 
 `conf/module.config` pins the image to the version built from this same commit,
@@ -87,7 +72,7 @@ manifest. Override it in your pipeline with a `withName` selector if you need to
 Then include the processes:
 
 ```groovy
-include { __PROCESS__ } from './modules/__NAME__/__SUB__/main.nf'
+include { INTEROP_RUN_METRICS } from './modules/interop/run_metrics/main.nf'
 ```
 
 ## Requirements

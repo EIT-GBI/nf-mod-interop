@@ -1,10 +1,10 @@
-name: __PROCESS_LOWER__
+name: interop_run_metrics
 description: |
   TODO: what this process does.
 keywords:
-  - __NAME__
+  - interop
 tools:
-  - __NAME__:
+  - interop:
       description: |
         TODO: one line on the tool, and its homepage.
 
@@ -21,10 +21,10 @@ output:
       description: |
         TODO: what the output holds.
       pattern: "tuple val(meta), path(${meta.id}.txt)"
-  - versions___NAME_ID__:
+  - versions_interop:
       type: map/file
       description: |
-        __NAME__ version, published to the `versions` topic.
+        interop version, published to the `versions` topic.
       pattern: "topic: versions"
 
 authors:

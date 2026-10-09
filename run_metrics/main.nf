@@ -1,7 +1,7 @@
 // TODO: one line on what this process does, and anything non-obvious about how
 // it drives the tool (e.g. an output flag that has to stay fixed).
 
-process __PROCESS__ {
+process INTEROP_RUN_METRICS {
     tag "${meta.id}"
     // TODO: process_low / process_medium / process_high. The consuming pipeline
     // defines what each label means; the module never sets cpus or memory itself.
@@ -18,7 +18,7 @@ process __PROCESS__ {
     // runs even under -stub and a non-zero exit fails the task, so keep the
     // command's exit status that of a filter (sed) rather than the tool.
     // TODO: adjust the parsing to the tool's --version output
-    tuple val("${task.process}"), val('__NAME__'), eval('__NAME__ --version 2>&1 | head -n 1 | sed "s/^[^0-9]*//"'), emit: versions___NAME_ID__, topic: versions
+    tuple val("${task.process}"), val('interop'), eval('interop --version 2>&1 | head -n 1 | sed "s/^[^0-9]*//"'), emit: versions_interop, topic: versions
 
     script:
     // Flags come from task.ext.args, never from pipeline params, so the module
@@ -26,7 +26,7 @@ process __PROCESS__ {
     def args = task.ext.args ?: ''
     // TODO: the real command
     """
-    __NAME__ \\
+    interop \\
         ${args} \\
         ${input} \\
         > ${meta.id}.txt

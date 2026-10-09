@@ -20,7 +20,7 @@ FROM debian:${DEBIAN_VERSION} AS builder
 ARG TOOL_VERSION
 ARG TOOL_SHA256
 # TODO: the upstream release URL
-ARG TOOL_URL="https://github.com/TODO/__NAME__/archive/refs/tags/v${TOOL_VERSION}.tar.gz"
+ARG TOOL_URL="https://github.com/TODO/interop/archive/refs/tags/v${TOOL_VERSION}.tar.gz"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -34,13 +34,13 @@ RUN apt-get update \
 
 WORKDIR /tmp/build
 
-RUN curl -fsSL --retry 3 -o "__NAME__.tar.gz" "${TOOL_URL}" \
-    && echo "${TOOL_SHA256}  __NAME__.tar.gz" | sha256sum -c - \
-    && tar -xzf __NAME__.tar.gz \
-    && cd "__NAME__-${TOOL_VERSION}" \
+RUN curl -fsSL --retry 3 -o "interop.tar.gz" "${TOOL_URL}" \
+    && echo "${TOOL_SHA256}  interop.tar.gz" | sha256sum -c - \
+    && tar -xzf interop.tar.gz \
+    && cd "interop-${TOOL_VERSION}" \
     && make -j"$(nproc)" \
-    && install -Dm755 __NAME__ /opt/__NAME__/bin/__NAME__ \
-    && strip /opt/__NAME__/bin/__NAME__ || true
+    && install -Dm755 interop /opt/interop/bin/interop \
+    && strip /opt/interop/bin/interop || true
 
 # runtime #####################################################################
 
@@ -50,14 +50,14 @@ ARG DEBIAN_VERSION
 ARG TOOL_VERSION
 
 # TODO: the upstream source URL and licence
-LABEL org.opencontainers.image.title="__NAME__" \
-    org.opencontainers.image.description="__NAME__ on debian:${DEBIAN_VERSION}" \
+LABEL org.opencontainers.image.title="interop" \
+    org.opencontainers.image.description="interop on debian:${DEBIAN_VERSION}" \
     org.opencontainers.image.version="${TOOL_VERSION}" \
-    org.opencontainers.image.source="https://github.com/TODO/__NAME__" \
+    org.opencontainers.image.source="https://github.com/TODO/interop" \
     org.opencontainers.image.licenses="TODO"
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PATH=/opt/__NAME__/bin:${PATH} \
+    PATH=/opt/interop/bin:${PATH} \
     LC_ALL=C.UTF-8
 
 # procps is not optional: Nextflow's task wrapper shells out to `ps` to collect
@@ -71,8 +71,8 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-COPY --from=builder /opt/__NAME__ /opt/__NAME__
+COPY --from=builder /opt/interop /opt/interop
 
 # No ENTRYPOINT: Nextflow invokes the container as `/bin/bash -c ...`, and an
-# ENTRYPOINT of ["__NAME__"] would turn that into `__NAME__ /bin/bash`.
-CMD ["__NAME__", "--version"]
+# ENTRYPOINT of ["interop"] would turn that into `interop /bin/bash`.
+CMD ["interop", "--version"]
