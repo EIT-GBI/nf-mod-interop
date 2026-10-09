@@ -9,9 +9,10 @@ nextflow_process {
     //             tile plot are populated
     //   MISEQ   - non-patterned: no %Occupied and no plot, and a Windows-style
     //             OutputFolder in RunParameters.xml
-    // Neither is a NextSeq 2000, so the fields only its RunParameters.xml and
-    // PrimaryAnalysisMetrics.csv carry (Flowcell, Cycles, TotalReadsPF...) are
-    // "n/a" here; that degradation is part of what is being checked.
+    // Neither is a NextSeq 2000, so the fields only its RunParameters.xml carries
+    // (Flowcell, Cycles...) are "n/a" here; that degradation is part of what is
+    // being checked. The NovaSeq test also gets data/PrimaryAnalysisMetrics.csv,
+    // copied from a real NextSeq 2000 run, to cover TotalReadsPF.
     def NOVASEQ = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/sarscov2/illumina/bcl/200624_A00834_0183_BHMTFYDRXX.tar.gz", checkIfExists: true)'
     def MISEQ   = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/homo_sapiens/illumina/bcl/flowcell.tar.gz", checkIfExists: true)'
 
@@ -54,6 +55,7 @@ nextflow_process {
                 process {
                     """
                     input[0] = [[id:'novaseq'], ${NOVASEQ}]
+                    input[1] = file("${moduleTestDir}/data/PrimaryAnalysisMetrics.csv", checkIfExists: true)
                     """
                 }
             }
@@ -73,6 +75,9 @@ nextflow_process {
             def row = readRow(process.out.metrics[0][1])
             assert row['Occupied (%)'] == '96.69'
             assert row['Concerns'] == 'potentially overloaded'
+            // From the PrimaryAnalysisMetrics.csv of a real NextSeq 2000 run, whose
+            // fields are separated by ", ": no leading space may survive.
+            assert row['TotalReadsPF (M)'] == '538.83'
             assert new File(process.out.plot[0][1]).exists()
 
             // The PNG is left out of the snapshot: its bytes move with the
@@ -95,6 +100,7 @@ nextflow_process {
                 process {
                     """
                     input[0] = [[id:'miseq'], ${MISEQ}]
+                    input[1] = []
                     """
                 }
             }
