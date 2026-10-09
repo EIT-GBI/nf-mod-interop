@@ -9,9 +9,14 @@ the cron-based collector for the NextSeq 2000: same metric set, same column
 names (`LOG_COLUMNS`) and same %Occupied vs %PF plot, so rows from both tools
 concatenate into one log. **Keep `LOG_COLUMNS` in
 `run_metrics/resources/usr/bin/collect_illumina_metrics.py` in sync with that
-repo's `utils.py`**, and keep the InterOp, numpy and matplotlib pins in the
-Dockerfile in step with its `uv.lock`. The script's docstring lists where it
-deliberately differs.
+repo's `utils.py`**, and keep the Python package pins in the Dockerfile in
+step with its `uv.lock`. The script's docstring lists where it deliberately
+differs.
+
+The image is `debian:13-slim`, like every other nf-mod, so it runs Debian's
+Python 3.13 (the collector runs 3.14; the package versions are the same). Every
+package, transitive dependencies included, is pinned with its wheel hashes
+inside the Dockerfile and installed with `pip --require-hashes`.
 
 Image: `ghcr.io/eit-gbi/nf-mod-interop:v1.0.0`
 
