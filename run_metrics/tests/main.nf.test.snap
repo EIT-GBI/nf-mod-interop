@@ -29,7 +29,7 @@
             "nf-test": "0.9.3",
             "nextflow": "26.04.6"
         },
-        "timestamp": "2026-10-09T11:59:36.806614"
+        "timestamp": "2026-10-09T15:10:49.762781"
     },
     "INTEROP_RUN_METRICS - patterned flowcell - metrics and tile plot": {
         "content": [
@@ -38,7 +38,7 @@
                     {
                         "id": "novaseq"
                     },
-                    "novaseq.run_metrics.csv:md5,5a9993e914f9e9adb1486f5374df131d"
+                    "novaseq.run_metrics.csv:md5,7f94cde3c506a71846f6b827e9177281"
                 ]
             ],
             [
@@ -46,7 +46,7 @@
                     {
                         "id": "novaseq"
                     },
-                    "novaseq_run_metrics_mqc.tsv:md5,2d9f61a574a839bf11945c21a85364ef"
+                    "novaseq_run_metrics_mqc.tsv:md5,c81132c14e2f3681c92146184f914afc"
                 ]
             ],
             [
@@ -61,6 +61,6 @@
             "nf-test": "0.9.3",
             "nextflow": "26.04.6"
         },
-        "timestamp": "2026-10-09T11:59:33.299098"
+        "timestamp": "2026-10-09T15:10:44.591753"
     }
 }

@@ -128,8 +128,11 @@ def _read_total_reads(run_dir):
     if not os.path.isfile(pam):
         print(f'  warning: {pam} not found, TotalReadsPF unavailable', file=sys.stderr)
         return NA
-    with open(pam, newline='') as fh:
-        rows = list(csv.reader(fh))
+    # The instrument separates fields with ", ", so without skipinitialspace
+    # every value but the first keeps a leading space (" 538.83"). The file is
+    # UTF-8: its first metric is "≥ Q30".
+    with open(pam, newline='', encoding='utf-8') as fh:
+        rows = list(csv.reader(fh, skipinitialspace=True))
     data = rows[1:]
     try:
         return data[2][2]
