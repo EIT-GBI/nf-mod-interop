@@ -1,30 +1,51 @@
 name: interop_run_metrics
 description: |
-  TODO: what this process does.
+  Run-level QC metrics for one Illumina run (yield, Q30, %PF, %Occupied, PhiX
+  alignment and error, phasing, first-cycle intensity), read from the binary
+  InterOp files, RunParameters.xml and PrimaryAnalysisMetrics.csv. Mirrors the
+  log written by EIT-GBI/Automate-Seq-Run-Metrics-Collection.
 keywords:
+  - qc
+  - illumina
   - interop
+  - run metrics
 tools:
   - interop:
       description: |
-        TODO: one line on the tool, and its homepage.
+        Illumina InterOp, a library for reading the binary run metrics an
+        Illumina sequencer writes. https://github.com/Illumina/interop
 
 input:
-  - input:
-      type: map/file
+  - run_dir:
+      type: map/directory
       description: |
-        TODO: sample metadata map and the input file.
-      pattern: "tuple val(meta), path(input)"
+        Run metadata map and the run output folder, holding InterOp/ and
+        RunParameters.xml, plus PrimaryAnalysisMetrics/ on a NextSeq 2000.
+        A missing optional input gives "n/a" for its metrics.
+      pattern: "tuple val(meta), path(run_dir)"
 
 output:
-  - result:
+  - metrics:
       type: map/file
       description: |
-        TODO: what the output holds.
-      pattern: "tuple val(meta), path(${meta.id}.txt)"
+        One-row CSV in the column order of the Automate-Seq-Run-Metrics-Collection
+        log, so rows from both tools concatenate.
+      pattern: "tuple val(meta), path(${meta.id}.run_metrics.csv)"
+  - mqc_table:
+      type: map/file
+      description: |
+        The same row as MultiQC custom content.
+      pattern: "tuple val(meta), path(${meta.id}_run_metrics_mqc.tsv)"
+  - plot:
+      type: map/file
+      description: |
+        Per-tile %Occupied vs %PF scatter, as MultiQC custom content. Optional:
+        only patterned flowcells report %Occupied.
+      pattern: "tuple val(meta), path(${meta.id}_occupied_vs_pf_mqc.png)"
   - versions_interop:
       type: map/file
       description: |
-        interop version, published to the `versions` topic.
+        InterOp version, published to the `versions` topic.
       pattern: "topic: versions"
 
 authors:

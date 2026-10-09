@@ -4,9 +4,25 @@ nextflow_process {
     script "../main.nf"
     process "INTEROP_RUN_METRICS"
 
-    // TODO: pick a small public input that suits the tool. nf-core/test-datasets
-    // has reads, BAMs and references for most tools.
-    def TEST_INPUT = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/sarscov2/illumina/fastq/test_1.fastq.gz", checkIfExists: true)'
+    // Real run folders from nf-core/test-datasets, cut down to one lane:
+    //   NOVASEQ - NovaSeq 6000 SP, a patterned flowcell, so %Occupied and the
+    //             tile plot are populated
+    //   MISEQ   - non-patterned: no %Occupied and no plot, and a Windows-style
+    //             OutputFolder in RunParameters.xml
+    // Neither is a NextSeq 2000, so the fields only its RunParameters.xml and
+    // PrimaryAnalysisMetrics.csv carry (Flowcell, Cycles, TotalReadsPF...) are
+    // "n/a" here; that degradation is part of what is being checked.
+    def NOVASEQ = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/sarscov2/illumina/bcl/200624_A00834_0183_BHMTFYDRXX.tar.gz", checkIfExists: true)'
+    def MISEQ   = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/homo_sapiens/illumina/bcl/flowcell.tar.gz", checkIfExists: true)'
+
+    // The one-row metrics CSV as a column -> value map. No field holds a comma
+    // or a quote, so a plain split is exact and saves the nft-csv plugin.
+    def readRow = { String csv_path ->
+        def lines = new File(csv_path).readLines()
+        def header = lines[0].split(',', -1) as List
+        def values = lines[1].split(',', -1) as List
+        return [header, values].transpose().collectEntries { kv -> [(kv[0]): kv[1]] }
+    }
 
     test("INTEROP_RUN_METRICS - stub - wiring and output names") {
 
@@ -15,20 +31,99 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = [[id:'test'], ${TEST_INPUT}]
+                input[0] = [[id:'test'], file("${moduleTestDir}")]
                 """
             }
         }
 
         then {
             assert process.success
-            assert process.out.result
-            assert file(process.out.result[0][1]).name == 'test.txt'
+            assert file(process.out.metrics[0][1]).name == 'test.run_metrics.csv'
+            assert file(process.out.mqc_table[0][1]).name == 'test_run_metrics_mqc.tsv'
+            assert file(process.out.plot[0][1]).name == 'test_occupied_vs_pf_mqc.png'
         }
     }
 
-    // TODO: add a test that runs the tool for real. Point it at the released
-    // image with `config "../../tests.config"`, and snapshot only the parts of
-    // the output that stay stable between runs. nf-mod-fastqc is the worked
-    // example.
+    test("INTEROP_RUN_METRICS - patterned flowcell - metrics and tile plot") {
+
+        config "../../tests.config"
+
+        setup {
+            run("UNTAR") {
+                script "./untar.nf"
+                process {
+                    """
+                    input[0] = [[id:'novaseq'], ${NOVASEQ}]
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = UNTAR.out.dir
+                """
+            }
+        }
+
+        then {
+            assert process.success
+
+            def row = readRow(process.out.metrics[0][1])
+            assert row['Occupied (%)'] == '96.69'
+            assert row['Concerns'] == 'potentially overloaded'
+            assert new File(process.out.plot[0][1]).exists()
+
+            // The PNG is left out of the snapshot: its bytes move with the
+            // matplotlib build, not with the metrics.
+            assert snapshot(
+                process.out.metrics,
+                process.out.mqc_table,
+                process.out.versions_interop,
+            ).match()
+        }
+    }
+
+    test("INTEROP_RUN_METRICS - non-patterned flowcell - no plot, n/a occupancy") {
+
+        config "../../tests.config"
+
+        setup {
+            run("UNTAR") {
+                script "./untar.nf"
+                process {
+                    """
+                    input[0] = [[id:'miseq'], ${MISEQ}]
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = UNTAR.out.dir
+                """
+            }
+        }
+
+        then {
+            assert process.success
+
+            def row = readRow(process.out.metrics[0][1])
+            assert row['Occupied (%)'] == 'n/a'
+            // OutputFolder is "\\shares...\MiSeq_M01101\250923_M01101_0665_...":
+            // the run number, not a "<dir>\<run>" fragment
+            assert row['Run_nr'] == '0665'
+            assert row['SampleSheet'] == 'SampleSheets/SampleSheet.csv'
+            assert !process.out.plot
+
+            assert snapshot(
+                process.out.metrics,
+                process.out.mqc_table,
+                process.out.versions_interop,
+            ).match()
+        }
+    }
 }

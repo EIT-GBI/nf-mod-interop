@@ -1,78 +1,53 @@
-ARG DEBIAN_VERSION=13-slim
-# TODO: pin the version, and set the checksum of the release archive
-# (remove this TODO line once pinned — the CI build and release are gated on its absence)
-ARG TOOL_VERSION=0.0.0
-ARG TOOL_SHA256=0000000000000000000000000000000000000000000000000000000000000000
+ARG PYTHON_VERSION=3.14
+# Kept identical to the uv.lock of EIT-GBI/Automate-Seq-Run-Metrics-Collection,
+# so this module and that collector read InterOp with the same library.
+ARG INTEROP_VERSION=1.9.0
+ARG NUMPY_VERSION=2.4.3
+ARG MATPLOTLIB_VERSION=3.10.8
 
-# builder #####################################################################
-#
-# Download a pinned upstream release, verify it, and build it here, so the
-# runtime image never carries a compiler, curl or the source tree.
-#
-# This stage assumes a source tarball built with make. Adapt it to the tool:
-#   - prebuilt binary:  skip the build, just install it   (nf-mod-modkit)
-#   - jar + launcher:   unpack only                        (nf-mod-fastqc)
-#   - bioconda-only:    micromamba with a pinned version, plus procps from apt
-#                       (nf-mod-minimap2) — a last resort, the image is larger
+# InterOp ships its Python bindings as manylinux wheels for x86_64 and aarch64,
+# so there is nothing to compile and no builder stage: pip installs the pinned
+# wheels straight into the runtime image. Older InterOp releases (e.g. 1.3.2)
+# have no aarch64 wheel and fail the arm64 build.
 
-FROM debian:${DEBIAN_VERSION} AS builder
+FROM python:${PYTHON_VERSION}-slim
 
-ARG TOOL_VERSION
-ARG TOOL_SHA256
-# TODO: the upstream release URL
-ARG TOOL_URL="https://github.com/TODO/interop/archive/refs/tags/v${TOOL_VERSION}.tar.gz"
+ARG PYTHON_VERSION
+ARG INTEROP_VERSION
+ARG NUMPY_VERSION
+ARG MATPLOTLIB_VERSION
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# TODO: add the tool's build dependencies (e.g. zlib1g-dev, libbz2-dev)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /tmp/build
-
-RUN curl -fsSL --retry 3 -o "interop.tar.gz" "${TOOL_URL}" \
-    && echo "${TOOL_SHA256}  interop.tar.gz" | sha256sum -c - \
-    && tar -xzf interop.tar.gz \
-    && cd "interop-${TOOL_VERSION}" \
-    && make -j"$(nproc)" \
-    && install -Dm755 interop /opt/interop/bin/interop \
-    && strip /opt/interop/bin/interop || true
-
-# runtime #####################################################################
-
-FROM debian:${DEBIAN_VERSION} AS runtime
-
-ARG DEBIAN_VERSION
-ARG TOOL_VERSION
-
-# TODO: the upstream source URL and licence
 LABEL org.opencontainers.image.title="interop" \
-    org.opencontainers.image.description="interop on debian:${DEBIAN_VERSION}" \
-    org.opencontainers.image.version="${TOOL_VERSION}" \
-    org.opencontainers.image.source="https://github.com/TODO/interop" \
-    org.opencontainers.image.licenses="TODO"
+    org.opencontainers.image.description="Illumina InterOp ${INTEROP_VERSION} Python bindings, numpy and matplotlib on python:${PYTHON_VERSION}-slim" \
+    org.opencontainers.image.version="${INTEROP_VERSION}" \
+    org.opencontainers.image.source="https://github.com/Illumina/interop" \
+    org.opencontainers.image.licenses="GPL-3.0"
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PATH=/opt/interop/bin:${PATH} \
-    LC_ALL=C.UTF-8
+    LC_ALL=C.UTF-8 \
+    MPLBACKEND=Agg \
+    MPLCONFIGDIR=/opt/matplotlib
 
 # procps is not optional: Nextflow's task wrapper shells out to `ps` to collect
 # task metrics, and debian-slim does not carry it.
-# TODO: add the tool's runtime libraries (the non -dev counterparts of the above)
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
-        ca-certificates \
         procps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-COPY --from=builder /opt/interop /opt/interop
+RUN pip install --no-cache-dir --only-binary=:all: \
+        "interop==${INTEROP_VERSION}" \
+        "numpy==${NUMPY_VERSION}" \
+        "matplotlib==${MATPLOTLIB_VERSION}"
 
-# No ENTRYPOINT: Nextflow invokes the container as `/bin/bash -c ...`, and an
-# ENTRYPOINT of ["interop"] would turn that into `interop /bin/bash`.
-CMD ["interop", "--version"]
+# Build the matplotlib font cache at image build time, in a fixed world-readable
+# directory: tasks run as the calling user (docker -u, Singularity), whose home
+# is not writable, and would otherwise rebuild the cache on every run.
+RUN mkdir -p "${MPLCONFIGDIR}" \
+    && python -c "import matplotlib.pyplot" \
+    && chmod -R a+rwX "${MPLCONFIGDIR}"
+
+# No ENTRYPOINT: Nextflow invokes the container as `/bin/bash -c ...`.
+CMD ["python", "-c", "import interop; print(interop.__version__)"]
