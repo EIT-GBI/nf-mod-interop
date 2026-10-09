@@ -13,7 +13,7 @@ repo's `utils.py`**, and keep the InterOp, numpy and matplotlib pins in the
 Dockerfile in step with its `uv.lock`. The script's docstring lists where it
 deliberately differs.
 
-Image: `ghcr.io/eit-gbi/nf-mod-interop:v0.0.0`
+Image: `ghcr.io/eit-gbi/nf-mod-interop:v1.0.0`
 
 ## Processes
 
@@ -60,7 +60,7 @@ Pin to a release tag rather than a branch, so pipeline runs stay reproducible:
 
 ```bash
 git submodule add https://github.com/EIT-GBI/nf-mod-interop.git modules/interop
-git -C modules/interop checkout v0.0.0
+git -C modules/interop checkout v1.0.0
 ```
 
 Record the same version in the pipeline's `modules.versions`
