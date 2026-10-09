@@ -1,0 +1,205 @@
+# .github/workflows/release.yml
+name: Release on Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  # Manual fallback: lets a release be cut without a merge, e.g. if the
+  # label-driven run is ever missed or has to be retried.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump to apply'
+        required: true
+        type: choice
+        options: [patch, minor, major]
+
+jobs:
+  release:
+    # Merged PRs only (not merely closed); manual runs always proceed.
+    # Skip on the template repo itself — only scaffolded copies release.
+    if: >-
+      github.event.repository.name != 'nf-mod-template' &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      # Short-lived token for the eit-gbi-release-bot GitHub App, which is on
+      # the main ruleset's bypass list. The default GITHUB_TOKEN cannot bypass
+      # rulesets, so pushing to main needs this. Pushes made with an app token
+      # also trigger other workflows, which GITHUB_TOKEN pushes do not.
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Determine bump type
+        id: bump
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=${{ inputs.bump }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          if echo "$LABELS" | grep -q "bump:major"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$LABELS" | grep -q "bump:minor"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$LABELS" | grep -q "bump:patch"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            # Fail loudly rather than exit 0: a bare `exit 0` only ends this
+            # step, so the job would carry on with an empty bump type and
+            # re-tag the current version.
+            echo "::error::No bump label on the merged PR; cannot determine a version bump."
+            exit 1
+          fi
+
+      - name: Check Dockerfile is pinned
+        run: |
+          if grep -q '# TODO: pin the version' Dockerfile; then
+            echo "::error::Dockerfile still has the '# TODO: pin the version' line. Pin the version and remove the TODO before releasing."
+            exit 1
+          fi
+
+      - name: Get current version
+        id: current
+        run: |
+          VERSION=$(grep -oP "version\s*=\s*['\"]\K[^'\"]+" nextflow.config)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Compute next version
+        id: next
+        run: |
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${{ steps.current.outputs.version }}"
+          case "${{ steps.bump.outputs.type }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+          esac
+          echo "version=$MAJOR.$MINOR.$PATCH" >> $GITHUB_OUTPUT
+
+      - name: Resolve lowercase image name
+        id: img
+        # ghcr.io requires a lowercase path; github.repository can contain
+        # uppercase (e.g. EIT-GBI/...), which breaks plain docker commands.
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether the Dockerfile changed since the last release
+        id: docker_changed
+        # Build only when the image actually needs rebuilding. Compare the
+        # Dockerfile against the previous version tag; if it's identical we
+        # re-tag the existing image instead of rebuilding it.
+        run: |
+          if [ ! -f Dockerfile ]; then
+            echo "No Dockerfile in this repo — this module uses an external image; skipping all container steps."
+            echo "changed=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "")
+          echo "last_tag=${LAST_TAG}" >> "$GITHUB_OUTPUT"
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous release tag found — will build."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif ! git diff --quiet "$LAST_TAG" HEAD -- Dockerfile; then
+            echo "Dockerfile changed since $LAST_TAG — will build."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Dockerfile unchanged since $LAST_TAG — will re-tag existing image."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-qemu-action@v4
+        if: steps.docker_changed.outputs.changed != 'none'
+      - uses: docker/setup-buildx-action@v4
+        if: steps.docker_changed.outputs.changed != 'none'
+      - uses: docker/login-action@v4
+        if: steps.docker_changed.outputs.changed != 'none'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        if: steps.docker_changed.outputs.changed == 'true'
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.img.outputs.image }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=v${{ steps.next.outputs.version }}
+
+      - name: Build and push container
+        if: steps.docker_changed.outputs.changed == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Re-tag existing image (Dockerfile unchanged)
+        if: steps.docker_changed.outputs.changed == 'false'
+        # No rebuild needed: point the new version tag at the image of the
+        # previous release. Copying from that version tag, not from :latest,
+        # means a release can only ever point at an image a release already
+        # pointed at, even if :latest was rebuilt in between (build.yml's
+        # 'force'). imagetools copies the multi-arch index without pulling
+        # per-platform images.
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ steps.img.outputs.image }}:v${{ steps.next.outputs.version }} \
+            ${{ steps.img.outputs.image }}:${{ steps.docker_changed.outputs.last_tag }}
+
+      - name: Update nextflow.config
+        run: |
+          sed -i "s/version\s*=\s*['\"][^'\"]*['\"]/version = '${{ steps.next.outputs.version }}'/" nextflow.config
+
+      - name: Pin the container tag to the new version
+        # conf/module.config is what consuming pipelines includeConfig, so its
+        # image tag must match this release. Only this repo's own ghcr image is
+        # rewritten; external images (e.g. nvcr.io) are left alone.
+        run: |
+          set -euo pipefail
+          IMAGE="${{ steps.img.outputs.image }}"
+          NEW_VER="${{ steps.next.outputs.version }}"
+          # Rewrite every reference to this repo's own image, wherever it is
+          # written, so the config a pipeline includes and the docs a human
+          # reads never drift from the release. Any other registry is left
+          # alone (e.g. parabricks' nvcr.io image is not ours to version).
+          for f in conf/module.config README.md; do
+            [ -f "$f" ] || continue
+            sed -i -E "s|${IMAGE}:v[0-9]+\.[0-9]+\.[0-9]+|${IMAGE}:v${NEW_VER}|g" "$f"
+          done
+          # the README also shows a `git checkout vX.Y.Z` for pinning the submodule
+          [ -f README.md ] && sed -i -E "s|(git -C modules/[A-Za-z0-9_-]+ checkout )v[0-9]+\.[0-9]+\.[0-9]+|\1v${NEW_VER}|g" README.md
+          echo "References to ${IMAGE} now read:"
+          grep -rn "${IMAGE}:v" conf/module.config README.md || echo "  (none found)"
+
+      - name: Commit, tag, push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nextflow.config
+          [ -f conf/module.config ] && git add conf/module.config
+          [ -f README.md ] && git add README.md
+          git commit -m "chore: bump version to ${{ steps.next.outputs.version }} [skip ci]"
+          git tag "v${{ steps.next.outputs.version }}"
+          git push && git push --tags
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: "v${{ steps.next.outputs.version }}"
+          generate_release_notes: true

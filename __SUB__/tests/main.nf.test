@@ -1,0 +1,34 @@
+nextflow_process {
+
+    name "Test __PROCESS__"
+    script "../main.nf"
+    process "__PROCESS__"
+
+    // TODO: pick a small public input that suits the tool. nf-core/test-datasets
+    // has reads, BAMs and references for most tools.
+    def TEST_INPUT = 'file("https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/sarscov2/illumina/fastq/test_1.fastq.gz", checkIfExists: true)'
+
+    test("__PROCESS__ - stub - wiring and output names") {
+
+        options "-stub-run"
+
+        when {
+            process {
+                """
+                input[0] = [[id:'test'], ${TEST_INPUT}]
+                """
+            }
+        }
+
+        then {
+            assert process.success
+            assert process.out.result
+            assert file(process.out.result[0][1]).name == 'test.txt'
+        }
+    }
+
+    // TODO: add a test that runs the tool for real. Point it at the released
+    // image with `config "../../tests.config"`, and snapshot only the parts of
+    // the output that stay stable between runs. nf-mod-fastqc is the worked
+    // example.
+}

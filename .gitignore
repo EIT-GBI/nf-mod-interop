@@ -1,0 +1,5 @@
+.DS_Store
+.nextflow*
+.nf-test.log
+.nf-test/
+work/

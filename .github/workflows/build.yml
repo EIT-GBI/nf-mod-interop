@@ -1,0 +1,93 @@
+name: build
+
+# By default this does NOT rebuild: it only builds when the Dockerfile changed
+# since the last release, and otherwise stops with "nothing to rebuild".
+#
+# Manual rebuild of the :latest image. Merges are built by release.yml, which
+# rebuilds only when the Dockerfile changed since the last release and re-tags
+# the existing image otherwise. This workflow applies the same rule, so a
+# manual run does not rebuild an image that would come out identical.
+#
+# There is no push trigger on purpose: a merge that changes the Dockerfile is
+# already built by release.yml, and building it here too would race it for
+# :latest.
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Override: rebuild anyway, even though the Dockerfile is unchanged (normally skipped). Only for picking up base-image security updates.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  gate:
+    # The template repo itself doesn't build; only its scaffolded copies.
+    if: github.event.repository.name != 'nf-mod-template'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # the comparison below needs the release tags
+          fetch-depth: 0
+
+      - id: check
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          if grep -q '# TODO: pin the version' Dockerfile; then
+            echo "Dockerfile still has the stub TODO — skipping build."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$FORCE" = "true" ]; then
+            echo "Forced rebuild requested."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LAST_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "No release tag yet — will build."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$LAST_TAG" HEAD -- Dockerfile; then
+            echo "Dockerfile unchanged since $LAST_TAG — nothing to rebuild. Run again with 'force' to rebuild anyway."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Dockerfile changed since $LAST_TAG — will build."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

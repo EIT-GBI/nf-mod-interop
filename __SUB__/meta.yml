@@ -1,0 +1,31 @@
+name: __PROCESS_LOWER__
+description: |
+  TODO: what this process does.
+keywords:
+  - __NAME__
+tools:
+  - __NAME__:
+      description: |
+        TODO: one line on the tool, and its homepage.
+
+input:
+  - input:
+      type: map/file
+      description: |
+        TODO: sample metadata map and the input file.
+      pattern: "tuple val(meta), path(input)"
+
+output:
+  - result:
+      type: map/file
+      description: |
+        TODO: what the output holds.
+      pattern: "tuple val(meta), path(${meta.id}.txt)"
+  - versions___NAME_ID__:
+      type: map/file
+      description: |
+        __NAME__ version, published to the `versions` topic.
+      pattern: "topic: versions"
+
+authors:
+  - "EIT Generative Biology Institute"

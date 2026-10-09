@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (Nextflow strict syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: nf-core/setup-nextflow@v3
+        with:
+          version: '26.04.4'
+      - run: nextflow lint -o concise .
+
+      - name: Container tag matches manifest.version
+        # release.yml moves these together; this catches a hand-edit that moves
+        # only one of them, which would ship a module pointing at the wrong image.
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP "version\s*=\s*['\"]\K[^'\"]+" nextflow.config)
+          [ -f conf/module.config ] || { echo "no conf/module.config; skipping"; exit 0; }
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          # only this repo's own image is version-locked; external ones are not
+          if grep -q "${IMAGE}" conf/module.config; then
+            TAG=$(grep -oE "${IMAGE}:v[0-9]+\.[0-9]+\.[0-9]+" conf/module.config | head -1 | sed 's/.*:v//')
+            if [ "$TAG" != "$VERSION" ]; then
+              echo "::error::conf/module.config pins v${TAG} but manifest.version is ${VERSION}"
+              exit 1
+            fi
+            echo "conf/module.config pins v${TAG}, matching manifest.version"
+          else
+            echo "conf/module.config uses an external image; nothing to check"
+          fi
+
+  test:
+    name: nf-test
+    runs-on: ubuntu-latest
+    env:
+      # nf-test 0.9.3 generates its harness with the spread operator and a for
+      # loop, both removed by the strict parser that Nextflow 26.04 enables by
+      # default. The module code itself is strict-clean (see the lint job); this
+      # only opts the generated harness out. Drop once nf-test emits strict syntax.
+      NXF_SYNTAX_PARSER: v1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: nf-core/setup-nextflow@v3
+        with:
+          version: '26.04.4'
+      - uses: nf-core/setup-nf-test@v2
+        with:
+          version: '0.9.3'
+      - name: Build the image the tests pin to
+        # The tests resolve their container through conf/module.config, which
+        # names a released tag. That tag does not exist on a PR that changes the
+        # Dockerfile, and on a module that has never been released it does not
+        # exist at all, so the run would fail on `manifest unknown`.
+        #
+        # Building it here under that exact tag makes docker resolve it locally
+        # and skip the pull, so the tests exercise this commit's Dockerfile
+        # rather than whatever was last published.
+        run: |
+          set -euo pipefail
+          [ -f Dockerfile ] || { echo "no Dockerfile; tests use the published image"; exit 0; }
+          # A freshly scaffolded module has an unpinned Dockerfile and only a
+          # stub test, which needs no image. Same gate as build.yml/release.yml.
+          if grep -q '# TODO: pin the version' Dockerfile; then
+            echo "Dockerfile not pinned yet; skipping the image build"
+            exit 0
+          fi
+          IMAGE=$(grep -oE "ghcr\.io/${GITHUB_REPOSITORY,,}:v[0-9]+\.[0-9]+\.[0-9]+" conf/module.config | head -1 || true)
+          if [ -z "${IMAGE}" ]; then
+            echo "conf/module.config uses an external image; nothing to build"
+            exit 0
+          fi
+          echo "building ${IMAGE} from this commit's Dockerfile"
+          docker build -t "${IMAGE}" .
+
+      - run: nf-test test --verbose
