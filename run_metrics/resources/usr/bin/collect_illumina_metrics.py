@@ -422,13 +422,19 @@ def write_multiqc_table(metrics, path, run_id):
         '# pconfig:',
         '#     id: illumina_run_metrics_table',
         "#     namespace: 'Illumina InterOp'",
-        # Concerns is '' when loading looks fine, so any text is worth a flag
         '# headers:',
-        '#     Concerns:',
-        '#         cond_formatting_rules:',
-        "#             fail: [{s_contains: 'potentially'}]",
     ]
     cols = [c for c in LOG_COLUMNS if c != 'RunID']
+    # A headers block limits the table to the columns it names, so list them
+    # all: naming only Concerns hid every other column, and the whole section
+    # whenever Concerns was empty. Concerns is '' when loading looks fine, so
+    # any text in it is worth a flag.
+    for c in cols:
+        header.append(f"#     '{c}':")
+        header.append(f"#         title: '{c}'")
+        if c == 'Concerns':
+            header.append('#         cond_formatting_rules:')
+            header.append("#             fail: [{s_contains: 'potentially'}]")
     with open(path, 'w', newline='') as fh:
         fh.write('\n'.join(header) + '\n')
         fh.write('Run\t' + '\t'.join(cols) + '\n')
