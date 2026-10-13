@@ -3,8 +3,9 @@
 
 Port of utils.collect_run_metrics / plot_occupied_vs_pf from
 EIT-GBI/Automate-Seq-Run-Metrics-Collection, which this deliberately mirrors:
-the metric set, the column names and the plot are kept identical so rows from
-either tool line up in the same log.
+the metric set and the column names are kept identical so rows from either
+tool line up in the same log. The %Occupied vs %PF plot no longer is: it is
+drawn around the OCC_MIN / PF_MIN loading thresholds that Concerns uses.
 
 Differences from the original, both forced by running under Nextflow:
 
@@ -24,6 +25,10 @@ fixed upstream too, or the two logs disagree):
   * The sample-sheet path and OutputFolder were split on os.sep, which leaves a
     Windows path from RunParameters.xml unsplit when running on Linux, so the
     log got the whole path (SampleSheet) or a "<dir>\\<run>" fragment (Run_nr).
+  * Concerns flagged any run with % Occupied > 90 as "potentially overloaded",
+    but a well-loaded patterned flowcell sits in the high 90s. Overloading
+    shows as high % Occupied *and* falling % PF, so Concerns now uses the same
+    two-axis rule as the plot (_loading_concern), on the per-tile medians.
 
 Also emits MultiQC custom-content files so the table and plot appear in the
 batch report: *_mqc.tsv and *_mqc.png.
@@ -55,6 +60,17 @@ LOG_COLUMNS = [
 
 NA = 'n/a'
 
+# Loading thresholds for patterned flowcells, shared by the Concerns column and
+# the plot so the two cannot disagree. Site-specific: calibrate against
+# historical runs per flowcell type.
+OCC_MIN = 90.0  # median % Occupied below this: underloaded
+PF_MIN = 65.0   # median % PF below this, with % Occupied above OCC_MIN: overloaded
+
+# Cell backgrounds for the MultiQC Loading column: the plot's zone colours
+# (steelblue / green / firebrick) semi-transparent, so the text stays readable on light and dark themes.
+# This is how MultiQC's own modules flag categories (header `bgcols`).
+LOADING_BGCOLS = {'under': 'rgba(70,130,180,0.4)', 'optimal': 'rgba(0,128,0,0.35)', 'over': 'rgba(178,34,34,0.4)'}
+
 
 def _nan_to_na(value):
     try:
@@ -75,6 +91,49 @@ def _safe(fn, default=NA):
     except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
         print(f'  warning: could not read metric ({exc})', file=sys.stderr)
         return default
+
+
+def _tile_occupied_and_pf(run_metrics):
+    """Per-tile (% Occupied, % PF) arrays, joined on (lane, tile), NaNs dropped.
+
+    Both arrays are empty on a non-patterned flowcell, which has no
+    ExtendedTileMetrics.
+    """
+    pf_by_tile = {}
+    tile_vec = run_metrics.tile_metric_set().metrics()
+    for i in range(tile_vec.size()):
+        m = tile_vec[i]
+        pf_by_tile[(m.lane(), m.tile())] = m.percent_pf()
+
+    occ_by_tile = {}
+    ext_vec = run_metrics.extended_tile_metric_set().metrics()
+    for i in range(ext_vec.size()):
+        m = ext_vec[i]
+        occ_by_tile[(m.lane(), m.tile())] = m.percent_occupied()
+
+    common = sorted(set(pf_by_tile) & set(occ_by_tile))
+    occ = np.array([occ_by_tile[k] for k in common], dtype=float)
+    pf = np.array([pf_by_tile[k] for k in common], dtype=float)
+
+    valid = np.isfinite(occ) & np.isfinite(pf)
+    return occ[valid], pf[valid]
+
+
+def _loading_concern(occ, pf, occ_min=OCC_MIN, pf_min=PF_MIN):
+    """'' when loading looks optimal, else 'potentially under/overloaded'.
+
+    Judged on the per-tile medians (Illumina KB 000002308): low % Occupied is
+    underloading; high % Occupied with low % PF is overloading, since
+    polyclonal wells fail the chastity filter. '' too when there is no tile
+    occupancy data to judge from.
+    """
+    if len(occ) == 0:
+        return ''
+    if np.median(occ) < occ_min:
+        return 'potentially underloaded'
+    if np.median(pf) < pf_min:
+        return 'potentially overloaded'
+    return ''
 
 
 def _parse_run_elapsed_time(text):
@@ -227,9 +286,7 @@ def collect_run_metrics(run_dir, run_id):
     phix_aligned = _safe(lambda: round(total.percent_aligned(), 2))
     phix_error_rate = _safe(lambda: round(total.error_rate(), 2))
 
-    concerns = ''
-    if isinstance(percent_occupied, (int, float)) and percent_occupied > 90:
-        concerns = 'potentially overloaded'
+    concerns = _safe(lambda: _loading_concern(*_tile_occupied_and_pf(run_metrics)), default='')
 
     params = _read_run_parameters(run_dir)
 
@@ -261,44 +318,29 @@ def collect_run_metrics(run_dir, run_id):
     }
 
 
-def plot_occupied_vs_pf(run_dir, run_id, out_path):
-    """Per-tile % Occupied vs % Pass Filter scatter.
+def plot_occupied_vs_pf(run_dir, run_id, out_path, occ_min=OCC_MIN, pf_min=PF_MIN):
+    """Per-tile % Occupied vs % Pass Filter scatter for patterned flow cells.
 
-    Each point is one tile. The cloud shape reveals loading status:
-      - Bottom-left diagonal: underloaded
-      - Central cloud: optimal
-      - Near-vertical at high %Occ: overloaded
+    Each point is one tile. Interpretation (Illumina KB 000002308):
+      - Underloaded: % Occupied low; points track the y = x diagonal
+        (empty wells, but occupied wells mostly pass filter).
+      - Optimal: % Occupied high and % PF high.
+      - Overloaded: % Occupied high but % PF falls away from the diagonal
+        (polyclonal wells fail the chastity filter).
 
-    See https://knowledge.illumina.com/instrumentation/general/instrumentation-general-troubleshooting-list/000002308
-    Returns the written path, or None when the run has no tile data (which is
-    the case for any non-patterned flowcell).
+    occ_min / pf_min default to OCC_MIN / PF_MIN, the thresholds the Concerns
+    column uses. Low PF can also reflect non-loading issues (low diversity,
+    bubbles, reagents), so zones are indicative only.
+
+    Returns the written path, or None when the run has no tile occupancy data
+    (e.g. non-patterned flow cells).
     """
     run_dir = os.path.abspath(run_dir)
 
     run_metrics = py_interop_run_metrics.run_metrics()
     run_metrics.read(run_dir)
 
-    # per-tile %PF from TileMetricSet
-    pf_by_tile = {}
-    tile_vec = run_metrics.tile_metric_set().metrics()
-    for i in range(tile_vec.size()):
-        m = tile_vec[i]
-        pf_by_tile[(m.lane(), m.tile())] = m.percent_pf()
-
-    # per-tile %Occupied from ExtendedTileMetricSet
-    occ_by_tile = {}
-    ext_vec = run_metrics.extended_tile_metric_set().metrics()
-    for i in range(ext_vec.size()):
-        m = ext_vec[i]
-        occ_by_tile[(m.lane(), m.tile())] = m.percent_occupied()
-
-    # Join on (lane, tile) and drop NaN / non-finite values
-    common = set(pf_by_tile) & set(occ_by_tile)
-    occ = np.array([occ_by_tile[k] for k in common], dtype=float)
-    pf = np.array([pf_by_tile[k] for k in common], dtype=float)
-
-    valid = np.isfinite(occ) & np.isfinite(pf)
-    occ, pf = occ[valid], pf[valid]
+    occ, pf = _tile_occupied_and_pf(run_metrics)
 
     if len(occ) == 0:
         print(f'  no valid tile data for {run_id}, skipping occupancy plot', file=sys.stderr)
@@ -307,27 +349,45 @@ def plot_occupied_vs_pf(run_dir, run_id, out_path):
     med_occ = float(np.median(occ))
     med_pf = float(np.median(pf))
 
+    # Per-tile zone counts
+    under = occ < occ_min
+    over = (~under) & (pf < pf_min)
+    optimal = (~under) & (~over)
+
+    concern = _loading_concern(occ, pf, occ_min, pf_min)
+    verdict = f'Loading {concern}' if concern else 'Loading looks optimal'
+
+    # Axis limits: zoom to data, but always keep thresholds visible
+    x_lo = max(0.0, min(occ_min - 5, occ.min() - 2))
+    y_lo = max(0.0, min(pf_min - 10, pf.min() - 5))
+
     fig, ax = plt.subplots(figsize=(7, 6))
 
-    # Background zones (Illumina loading guidance for patterned flow cells)
-    ax.axvspan(0, 60, alpha=0.07, color='steelblue', zorder=0)
-    ax.axvspan(60, 85, alpha=0.07, color='green', zorder=0)
-    ax.axvspan(85, 100, alpha=0.07, color='firebrick', zorder=0)
+    # 2D zones
+    ax.axvspan(x_lo, occ_min, alpha=0.07, color='steelblue', zorder=0)
+    ax.fill_between([occ_min, 100], y_lo, pf_min, alpha=0.07, color='firebrick', zorder=0)
+    ax.fill_between([occ_min, 100], pf_min, 100, alpha=0.07, color='green', zorder=0)
 
-    for x, label in [(30, 'Underloaded'), (72.5, 'Optimal'), (92.5, 'Overloaded')]:
-        ax.text(x, 99.5, label, ha='center', va='top', fontsize=7.5,
-                color='dimgray', style='italic')
+    label_kw = dict(fontsize=7.5, color='dimgray', style='italic')
+    ax.text((x_lo + occ_min) / 2, 99.5, 'Underloaded', ha='center', va='top', **label_kw)
+    ax.text((occ_min + 100) / 2, 99.5, 'Optimal', ha='center', va='top', **label_kw)
+    ax.text((occ_min + 100) / 2, y_lo + 1, 'Overloaded', ha='center', va='bottom', **label_kw)
 
-    ax.scatter(occ, pf, s=5, alpha=0.45, color='steelblue', linewidths=0, zorder=2)
+    # y = x reference: distance below it = occupied wells failing filter
+    ax.plot([0, 100], [0, 100], color='gray', lw=0.8, ls=':', zorder=1)
+
+    ax.scatter(occ, pf, s=8, alpha=0.5, color='steelblue', linewidths=0, zorder=2)
 
     ax.axvline(med_occ, color='black', lw=1, ls='--', alpha=0.65, zorder=3)
     ax.axhline(med_pf, color='black', lw=1, ls='--', alpha=0.65, zorder=3)
 
-    ax.text(0.02, 0.7,
+    ax.text(0.03, 0.30,
+            f'{verdict}\n'
             f'Median % Occupied : {med_occ:.1f}%\n'
             f'Median % PF       : {med_pf:.1f}%\n'
-            f'Tiles             : {len(occ)}',
-            transform=ax.transAxes, va='top', ha='left', fontsize=8.5,
+            f'Tiles             : {len(occ)} '
+            f'(opt {optimal.sum()} / under {under.sum()} / over {over.sum()})',
+            transform=ax.transAxes, va='top', ha='left', fontsize=8,
             fontfamily='monospace',
             bbox=dict(boxstyle='round,pad=0.45', facecolor='white',
                       alpha=0.85, edgecolor='lightgray'))
@@ -335,8 +395,8 @@ def plot_occupied_vs_pf(run_dir, run_id, out_path):
     ax.set_xlabel('% Occupied', fontsize=11)
     ax.set_ylabel('% Pass Filter', fontsize=11)
     ax.set_title(f'% Occupied vs % Pass Filter — {run_id}', fontsize=12, fontweight='bold')
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
+    ax.set_xlim(x_lo, 100)
+    ax.set_ylim(y_lo, 100)
     ax.grid(True, alpha=0.25, zorder=1)
 
     plt.tight_layout()
@@ -358,6 +418,13 @@ def write_multiqc_table(metrics, path, run_id):
     MultiQC has no module for these metrics, so they are injected as custom
     content rather than parsed.
     """
+    # Not a log column: the MultiQC table gets Loading, under / optimal / over,
+    # spelled the same as the plot zones and the General Statistics column.
+    if metrics['Occupied (%)'] == NA:
+        loading = NA
+    else:
+        loading = {'potentially underloaded': 'under',
+                   'potentially overloaded': 'over'}.get(metrics['Concerns'], 'optimal')
     header = [
         '# id: illumina_run_metrics',
         "# section_name: 'Illumina Run Metrics'",
@@ -367,12 +434,27 @@ def write_multiqc_table(metrics, path, run_id):
         '# pconfig:',
         '#     id: illumina_run_metrics_table',
         "#     namespace: 'Illumina InterOp'",
+        '# headers:',
     ]
-    cols = [c for c in LOG_COLUMNS if c != 'RunID']
+    # Loading leads, where it is seen without scrolling 24 columns
+    cols = ['Loading'] + [c for c in LOG_COLUMNS if c != 'RunID']
+    # A headers block limits the table to the columns it names, so list them
+    # all, or the rest disappear. No colour-scale bars: in a one-row table
+    # every bar is full width, so each number turns into a solid block.
+    for c in cols:
+        header.append(f"#     '{c}':")
+        header.append(f"#         title: '{c}'")
+        header.append('#         scale: false')
+        if c == 'Loading':
+            header.append("#         description: 'Flowcell loading from the per-tile medians: see the %Occupied vs %PF plot'")
+            header.append('#         bgcols:')
+            for value, colour in LOADING_BGCOLS.items():
+                header.append(f"#             {value}: '{colour}'")
+    row = dict(metrics, Loading=loading)
     with open(path, 'w', newline='') as fh:
         fh.write('\n'.join(header) + '\n')
         fh.write('Run\t' + '\t'.join(cols) + '\n')
-        fh.write(run_id + '\t' + '\t'.join(str(metrics[c]) for c in cols) + '\n')
+        fh.write(run_id + '\t' + '\t'.join(str(row[c]) for c in cols) + '\n')
 
 
 def main():
