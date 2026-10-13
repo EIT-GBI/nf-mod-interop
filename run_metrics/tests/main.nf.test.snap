@@ -14,7 +14,7 @@
                     {
                         "id": "miseq"
                     },
-                    "miseq_run_metrics_mqc.tsv:md5,9dcdc9523d713018b94e42d858fd6710"
+                    "miseq_run_metrics_mqc.tsv:md5,0200684e3842aaf132e3dcb789b7104f"
                 ]
             ],
             [
@@ -29,7 +29,7 @@
             "nf-test": "0.9.3",
             "nextflow": "26.04.6"
         },
-        "timestamp": "2026-10-13T10:32:20.327882"
+        "timestamp": "2026-10-13T11:48:31.217976"
     },
     "INTEROP_RUN_METRICS - patterned flowcell - metrics and tile plot": {
         "content": [
@@ -46,7 +46,7 @@
                     {
                         "id": "novaseq"
                     },
-                    "novaseq_run_metrics_mqc.tsv:md5,1f8f99fab2a400353f6d4a645125f495"
+                    "novaseq_run_metrics_mqc.tsv:md5,7aa3d592e7e515aff92c268acb11db2f"
                 ]
             ],
             [
@@ -61,6 +61,6 @@
             "nf-test": "0.9.3",
             "nextflow": "26.04.6"
         },
-        "timestamp": "2026-10-13T10:32:15.629885"
+        "timestamp": "2026-10-13T11:48:22.370037"
     }
 }

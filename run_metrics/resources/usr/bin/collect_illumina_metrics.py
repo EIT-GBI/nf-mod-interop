@@ -66,6 +66,11 @@ NA = 'n/a'
 OCC_MIN = 90.0  # median % Occupied below this: underloaded
 PF_MIN = 65.0   # median % PF below this, with % Occupied above OCC_MIN: overloaded
 
+# Cell backgrounds for the MultiQC Loading column: the plot's zone colours
+# (steelblue / green / firebrick) semi-transparent, so the text stays readable on light and dark themes.
+# This is how MultiQC's own modules flag categories (header `bgcols`).
+LOADING_BGCOLS = {'under': 'rgba(70,130,180,0.4)', 'optimal': 'rgba(0,128,0,0.35)', 'over': 'rgba(178,34,34,0.4)'}
+
 
 def _nan_to_na(value):
     try:
@@ -413,6 +418,13 @@ def write_multiqc_table(metrics, path, run_id):
     MultiQC has no module for these metrics, so they are injected as custom
     content rather than parsed.
     """
+    # Not a log column: the MultiQC table gets Loading, under / optimal / over,
+    # spelled the same as the plot zones and the General Statistics column.
+    if metrics['Occupied (%)'] == NA:
+        loading = NA
+    else:
+        loading = {'potentially underloaded': 'under',
+                   'potentially overloaded': 'over'}.get(metrics['Concerns'], 'optimal')
     header = [
         '# id: illumina_run_metrics',
         "# section_name: 'Illumina Run Metrics'",
@@ -424,21 +436,25 @@ def write_multiqc_table(metrics, path, run_id):
         "#     namespace: 'Illumina InterOp'",
         '# headers:',
     ]
-    cols = [c for c in LOG_COLUMNS if c != 'RunID']
+    # Loading leads, where it is seen without scrolling 24 columns
+    cols = ['Loading'] + [c for c in LOG_COLUMNS if c != 'RunID']
     # A headers block limits the table to the columns it names, so list them
-    # all: naming only Concerns hid every other column, and the whole section
-    # whenever Concerns was empty. Concerns is '' when loading looks fine, so
-    # any text in it is worth a flag.
+    # all, or the rest disappear. No colour-scale bars: in a one-row table
+    # every bar is full width, so each number turns into a solid block.
     for c in cols:
         header.append(f"#     '{c}':")
         header.append(f"#         title: '{c}'")
-        if c == 'Concerns':
-            header.append('#         cond_formatting_rules:')
-            header.append("#             fail: [{s_contains: 'potentially'}]")
+        header.append('#         scale: false')
+        if c == 'Loading':
+            header.append("#         description: 'Flowcell loading from the per-tile medians: see the %Occupied vs %PF plot'")
+            header.append('#         bgcols:')
+            for value, colour in LOADING_BGCOLS.items():
+                header.append(f"#             {value}: '{colour}'")
+    row = dict(metrics, Loading=loading)
     with open(path, 'w', newline='') as fh:
         fh.write('\n'.join(header) + '\n')
         fh.write('Run\t' + '\t'.join(cols) + '\n')
-        fh.write(run_id + '\t' + '\t'.join(str(metrics[c]) for c in cols) + '\n')
+        fh.write(run_id + '\t' + '\t'.join(str(row[c]) for c in cols) + '\n')
 
 
 def main():
