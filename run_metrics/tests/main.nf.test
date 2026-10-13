@@ -74,7 +74,9 @@ nextflow_process {
 
             def row = readRow(process.out.metrics[0][1])
             assert row['Occupied (%)'] == '96.69'
-            assert row['Concerns'] == 'potentially overloaded'
+            // Median % Occupied 97.2, % PF 83.3: a well-loaded run, which the
+            // old "% Occupied > 90" rule flagged as overloaded
+            assert row['Concerns'] == ''
             // From the PrimaryAnalysisMetrics.csv of a real NextSeq 2000 run, whose
             // fields are separated by ", ": no leading space may survive.
             assert row['TotalReadsPF (M)'] == '538.83'
