@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Collect run-level QC metrics for one completed Illumina NextSeq 2000 run.
 
-Port of utils.collect_run_metrics / plot_occupied_vs_pf from
-EIT-GBI/Automate-Seq-Run-Metrics-Collection, which this deliberately mirrors:
-the metric set and the column names are kept identical so rows from either
-tool line up in the same log. The %Occupied vs %PF plot no longer is: it is
-drawn around the OCC_MIN / PF_MIN loading thresholds that Concerns uses.
+Ported from utils.collect_run_metrics / plot_occupied_vs_pf in
+EIT-GBI/Automate-Seq-Run-Metrics-Collection, a cron collector that is no
+longer used (2026-11), so this module no longer has to match it: the metric
+set and most column names are the same, but the two logs are not kept in
+sync. The %Occupied vs %PF plot is drawn around the OCC_MIN / PF_MIN loading
+thresholds that Concerns uses.
 
 Differences from the original, both forced by running under Nextflow:
 
@@ -18,8 +19,7 @@ Differences from the original, both forced by running under Nextflow:
     that is missing PrimaryAnalysisMetrics.csv is still worth having, and the
     original would traceback on it.
 
-Three bugs of the original are fixed here (drop these notes once they are
-fixed upstream too, or the two logs disagree):
+Fixed here, and different from the original's log:
 
   * _parse_flowcell used `> 100`, labelling a 100-cycle P2 cartridge "P2 50".
   * The sample-sheet path and OutputFolder were split on os.sep, which leaves a
@@ -29,6 +29,8 @@ fixed upstream too, or the two logs disagree):
     but a well-loaded patterned flowcell sits in the high 90s. Overloading
     shows as high % Occupied *and* falling % PF, so Concerns now uses the same
     two-axis rule as the plot (_loading_concern), on the per-tile medians.
+  * 'LoadingConc (pM)' held InterOp's percent_occupancy_proxy(), a percentage,
+    not a concentration. The column is 'OccupancyProxy (%)'.
 
 Also emits MultiQC custom-content files so the table and plot appear in the
 batch report: *_mqc.tsv and *_mqc.png.
@@ -48,12 +50,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from interop import py_interop_run_metrics, py_interop_summary
 
-# Column order is the contract with the colleague's log CSV — keep in sync.
+# The one-row CSV's columns, in order (the original collector's, with
+# 'LoadingConc (pM)' renamed 'OccupancyProxy (%)').
 LOG_COLUMNS = [
     'RunID', 'Run_nr', 'RunStart', 'RunLength', 'Flowcell', 'Cycles',
     'TotalReadsPF (M)', 'Yield (Gb)', 'Q30 (%)', 'PF (%)',
     'PF_median (%)', 'PF_std', 'Occupied (%)', 'Occupied_median (%)', 'Occupied_std',
-    'LoadingConc (pM)', 'PhixAligned (%)', 'PhixError (%)',
+    'OccupancyProxy (%)', 'PhixAligned (%)', 'PhixError (%)',
     'Phasing (%)', 'Prephasing (%)', 'FirstCycleIntensity', 'Concerns',
     'SampleSheet', 'SerialNumber',
 ]
@@ -165,8 +168,7 @@ def _parse_flowcell(cartridge_mode_text):
 
     NOTE: the original uses `> 100` here, which sends a 100-cycle cartridge —
     the commonest P2 kit — down the else branch and labels it "P2 50",
-    contradicting its own docstring example. Fixed to `>= 100`. Worth fixing
-    upstream too, otherwise the two logs disagree on every 100-cycle run.
+    contradicting its own docstring example. Fixed to `>= 100`.
     """
     match = re.search(r'(P\d)\b.*?\((\d+)\s+Cycles?\)', cartridge_mode_text, re.IGNORECASE)
     if match:
@@ -280,7 +282,9 @@ def collect_run_metrics(run_dir, run_id):
 
     # Loading / occupancy (patterned nanowell flowcell specific)
     percent_occupied = _safe(lambda: round(total.percent_occupied(), 2))
-    loading_conc = _safe(lambda: round(total.percent_occupancy_proxy(), 2))
+    # InterOp's occupancy proxy: a percentage, not a loading concentration
+    # (both tools labelled it 'LoadingConc (pM)' until 2026-11)
+    occupancy_proxy = _safe(lambda: round(total.percent_occupancy_proxy(), 2))
 
     # PhiX spike-in metrics
     phix_aligned = _safe(lambda: round(total.percent_aligned(), 2))
@@ -306,7 +310,7 @@ def collect_run_metrics(run_dir, run_id):
         'Occupied (%)':        percent_occupied,
         'Occupied_median (%)': _safe(lambda: round(read1_lane.percent_occupied().median(), 2)),
         'Occupied_std':        _safe(lambda: round(read1_lane.percent_occupied().stddev(), 2)),
-        'LoadingConc (pM)':    loading_conc,
+        'OccupancyProxy (%)':  occupancy_proxy,
         'PhixAligned (%)':     phix_aligned,
         'PhixError (%)':       phix_error_rate,
         'Phasing (%)':         _safe(lambda: round(read1_lane.phasing().mean(), 4)),
@@ -429,7 +433,7 @@ def write_multiqc_table(metrics, path, run_id):
         '# id: illumina_run_metrics',
         "# section_name: 'Illumina Run Metrics'",
         "# description: 'Run-level metrics from InterOp, RunParameters.xml and"
-        " PrimaryAnalysisMetrics.csv. Mirrors the Automate-Seq-Run-Metrics-Collection log.'",
+        " PrimaryAnalysisMetrics.csv.'",
         '# plot_type: table',
         '# pconfig:',
         '#     id: illumina_run_metrics_table',
@@ -445,6 +449,8 @@ def write_multiqc_table(metrics, path, run_id):
         header.append(f"#     '{c}':")
         header.append(f"#         title: '{c}'")
         header.append('#         scale: false')
+        if c == 'OccupancyProxy (%)':
+            header.append("#         description: 'InterOp percent_occupancy_proxy: a percentage, not a loading concentration'")
         if c == 'Loading':
             header.append("#         description: 'Flowcell loading from the per-tile medians: see the %Occupied vs %PF plot'")
             header.append('#         bgcols:')

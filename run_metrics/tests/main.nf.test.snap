@@ -6,7 +6,7 @@
                     {
                         "id": "miseq"
                     },
-                    "miseq.run_metrics.csv:md5,f87733b841f40b3cbe5b42937a4e1956"
+                    "miseq.run_metrics.csv:md5,4bc2bbcdbe49bbe084ebc1957893707d"
                 ]
             ],
             [
@@ -14,7 +14,7 @@
                     {
                         "id": "miseq"
                     },
-                    "miseq_run_metrics_mqc.tsv:md5,0200684e3842aaf132e3dcb789b7104f"
+                    "miseq_run_metrics_mqc.tsv:md5,876b50e327e09739be3a386330190334"
                 ]
             ],
             [
@@ -29,7 +29,7 @@
             "nf-test": "0.9.3",
             "nextflow": "26.04.6"
         },
-        "timestamp": "2026-10-13T11:48:31.217976"
+        "timestamp": "2026-11-23T16:03:44.985804"
     },
     "INTEROP_RUN_METRICS - patterned flowcell - metrics and tile plot": {
         "content": [
@@ -38,7 +38,7 @@
                     {
                         "id": "novaseq"
                     },
-                    "novaseq.run_metrics.csv:md5,3cbbc5652f06bf8b87cc8198c087e903"
+                    "novaseq.run_metrics.csv:md5,52ce7cbcc27b5c34fef6e4df97ff0cef"
                 ]
             ],
             [
@@ -46,7 +46,7 @@
                     {
                         "id": "novaseq"
                     },
-                    "novaseq_run_metrics_mqc.tsv:md5,7aa3d592e7e515aff92c268acb11db2f"
+                    "novaseq_run_metrics_mqc.tsv:md5,63d8f11e09c010e8ba7a5437583c9107"
                 ]
             ],
             [
@@ -61,6 +61,6 @@
             "nf-test": "0.9.3",
             "nextflow": "26.04.6"
         },
-        "timestamp": "2026-10-13T11:48:22.370037"
+        "timestamp": "2026-11-23T16:03:40.406731"
     }
 }

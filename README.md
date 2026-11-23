@@ -3,15 +3,12 @@
 Nextflow module for Illumina run-level QC metrics read from the binary InterOp
 files. Used as a git submodule by pipelines (first: nf-seQC).
 
-`INTEROP_RUN_METRICS` mirrors
+`INTEROP_RUN_METRICS` was ported from
 [Automate-Seq-Run-Metrics-Collection](https://github.com/EIT-GBI/Automate-Seq-Run-Metrics-Collection),
-the cron-based collector for the NextSeq 2000: same metric set, same column
-names (`LOG_COLUMNS`) and same %Occupied vs %PF plot, so rows from both tools
-concatenate into one log. **Keep `LOG_COLUMNS` in
-`run_metrics/resources/usr/bin/collect_illumina_metrics.py` in sync with that
-repo's `utils.py`**, and keep the Python package pins in the Dockerfile in
-step with its `uv.lock`. The script's docstring lists where it deliberately
-differs.
+a cron-based collector for the NextSeq 2000 that is no longer used (2026-11).
+The metric set is the same, but nothing has to stay in sync with it any more:
+`LOG_COLUMNS` and the Dockerfile's Python pins are this module's own. The
+script's docstring lists where it differs from the original.
 
 The image is `debian:13-slim`, like every other nf-mod, so it runs Debian's
 Python 3.13 (the collector runs 3.14; the package versions are the same). Every
