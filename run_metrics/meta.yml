@@ -2,8 +2,8 @@ name: interop_run_metrics
 description: |
   Run-level QC metrics for one Illumina run (yield, Q30, %PF, %Occupied, PhiX
   alignment and error, phasing, first-cycle intensity), read from the binary
-  InterOp files, RunParameters.xml and PrimaryAnalysisMetrics.csv. Mirrors the
-  log written by EIT-GBI/Automate-Seq-Run-Metrics-Collection.
+  InterOp files, RunParameters.xml and PrimaryAnalysisMetrics.csv. Ported from
+  EIT-GBI/Automate-Seq-Run-Metrics-Collection (no longer used).
 keywords:
   - qc
   - illumina
@@ -28,8 +28,8 @@ output:
   - metrics:
       type: map/file
       description: |
-        One-row CSV in the column order of the Automate-Seq-Run-Metrics-Collection
-        log, so rows from both tools concatenate.
+        One-row CSV (header + one row), so CSVs from several runs
+        concatenate.
       pattern: "tuple val(meta), path(${meta.id}.run_metrics.csv)"
   - mqc_table:
       type: map/file

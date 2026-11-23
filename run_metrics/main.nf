@@ -1,9 +1,8 @@
 // Run-level metrics for one Illumina run, read from the binary InterOp files,
 // RunParameters.xml and PrimaryAnalysisMetrics.csv.
 //
-// Mirrors EIT-GBI/Automate-Seq-Run-Metrics-Collection: same metric set, same
-// column names, same %Occupied vs %PF tile plot, so rows from either tool line
-// up in one log. The extraction lives in resources/usr/bin/, which Nextflow
+// Ported from EIT-GBI/Automate-Seq-Run-Metrics-Collection (no longer used):
+// same metric set, near-identical columns. The extraction lives in resources/usr/bin/, which Nextflow
 // stages into the task and puts on PATH only when the consuming pipeline sets
 // `nextflow.enable.moduleBinaries = true`. Without it the task fails with
 // "collect_illumina_metrics.py: command not found".
